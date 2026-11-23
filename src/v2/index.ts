@@ -18,16 +18,17 @@ export * from './types.ts'
 export const Plugin: PluginV2 = define({
   id: 'opencode-pty',
   setup: async (ctx: PluginContextV2) => {
-    // opencode v2 plugin contexts are server clients: `ctx.session.prompt`
-    // wakes a session with a user prompt, preserving the session's current
-    // model by construction. Pre-2.0 hosts without the session domain still
-    // load the plugin, but exit notifications are disabled with a visible
-    // warning instead of silently never arriving.
-    const notifier =
-      typeof ctx.session?.prompt === 'function' ? new V2SessionNotifier(ctx.session) : undefined
+    // opencode v2 plugin contexts are server clients: `ctx.session.synthetic`
+    // wakes a session via the native synthetic inbox channel (falling back to
+    // `ctx.session.prompt` if absent), preserving the session's current model
+    // by construction. Pre-2.0 hosts without the session domain still load the
+    // plugin, but exit notifications are disabled with a visible warning.
+    const hasSessionWake =
+      typeof ctx.session?.synthetic === 'function' || typeof ctx.session?.prompt === 'function'
+    const notifier = hasSessionWake && ctx.session ? new V2SessionNotifier(ctx.session) : undefined
     if (!notifier) {
       console.warn(
-        '[opencode-pty] host does not expose ctx.session.prompt — exit notifications disabled'
+        '[opencode-pty] host does not expose ctx.session.synthetic or ctx.session.prompt — exit notifications disabled'
       )
     }
 

@@ -121,18 +121,27 @@ describe('OpenCode V2 Live Integration', () => {
     expect(server.server.url.hostname).toBe('127.0.0.1')
   })
 
-  it('delivers <pty_exited> via ctx.session.prompt when notifyOnExit is set', async () => {
-    const prompts: Array<{ sessionID: string; id: string | null; text: string }> = []
+  it('delivers <pty_exited> via native ctx.session.synthetic with a valid msg_ ID when notifyOnExit is set', async () => {
+    const synthetics: Array<{
+      sessionID: string
+      id: string | null
+      text: string
+      description: string | null
+    }> = []
     const simulatedContext: PluginContextV2 = {
       options: {},
       session: {
-        prompt: async (input) => {
-          prompts.push({
+        synthetic: async (input) => {
+          synthetics.push({
             sessionID: input.sessionID,
             id: input.id ?? null,
             text: input.text,
+            description: input.description ?? null,
           })
           return {} as never
+        },
+        prompt: async () => {
+          throw new Error('prompt should not be called when synthetic is available')
         },
       },
     }
@@ -149,19 +158,51 @@ describe('OpenCode V2 Live Integration', () => {
       notifyOnExit: true,
     })
 
-    await waitFor(() => prompts.length === 1)
+    await waitFor(() => synthetics.length === 1)
 
-    const prompt = prompts[0]
-    expect(prompt).toBeDefined()
-    // Delivered to the spawning session with a deterministic, idempotent id.
-    expect(prompt?.sessionID).toBe('ses_parent')
-    expect(prompt?.id).toBe(`pty_${spawned.id}_exited`)
-    expect(prompt?.text).toContain('<pty_exited>')
-    expect(prompt?.text).toContain(`ID: ${spawned.id}`)
-    expect(prompt?.text).toContain('Exit Code: 3')
-    expect(prompt?.text).toContain(
+    const notice = synthetics[0]
+    expect(notice).toBeDefined()
+    // Delivered to the spawning session with a deterministic, valid msg_ id.
+    expect(notice?.sessionID).toBe('ses_parent')
+    expect(notice?.id).toBe(`msg_pty_${spawned.id}_exited`)
+    expect(notice?.id).toStartWith('msg_')
+    expect(notice?.description).toContain(`PTY exited 3 (${spawned.id})`)
+    expect(notice?.text).toContain('<pty_exited>')
+    expect(notice?.text).toContain(`ID: ${spawned.id}`)
+    expect(notice?.text).toContain('Exit Code: 3')
+    expect(notice?.text).toContain(
       'Process failed. Use pty_read with the pattern parameter to search for errors in the output.'
     )
+  })
+
+  it('falls back to ctx.session.prompt with a valid msg_ ID when synthetic is absent', async () => {
+    const prompts: Array<{ sessionID: string; id: string | null; text: string }> = []
+    const simulatedContext: PluginContextV2 = {
+      options: {},
+      session: {
+        prompt: async (input) => {
+          prompts.push({
+            sessionID: input.sessionID,
+            id: input.id ?? null,
+            text: input.text,
+          })
+          return {} as never
+        },
+      },
+    }
+
+    await Plugin.setup(simulatedContext)
+    const spawned = manager.spawn({
+      command: 'sh',
+      args: ['-c', 'exit 0'],
+      description: 'V2 fallback prompt test',
+      parentSessionId: 'ses_parent',
+      notifyOnExit: true,
+    })
+
+    await waitFor(() => prompts.length === 1)
+    expect(prompts[0]?.sessionID).toBe('ses_parent')
+    expect(prompts[0]?.id).toBe(`msg_pty_${spawned.id}_exited`)
   })
 
   it('warns and disables notifications when the host has no session domain', async () => {

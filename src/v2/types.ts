@@ -72,13 +72,13 @@ export interface PluginContextV2 {
   }
   /**
    * opencode v2's plugin contexts are server clients: the `session` domain is
-   * how a plugin reads sessions and wakes them with user prompts. Typed from
-   * `@opencode/plugin` (the V2 SDK) so `ctx.session?.prompt` is checked
-   * against the real `SessionPromptInput`. Optional because hosts pre-2.0.x
-   * may not expose it; the setup guards at runtime.
+   * how a plugin reads sessions and wakes them through native synthetic inbox
+   * notices (`synthetic`) or user prompts (`prompt`). Optional because hosts
+   * pre-2.0.x may not expose it; the setup guards at runtime.
    */
   readonly session?: {
-    readonly prompt: Plugin.Context['session']['prompt']
+    readonly synthetic?: Plugin.Context['session']['synthetic']
+    readonly prompt?: Plugin.Context['session']['prompt']
   }
 }
 
